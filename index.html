@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="monetag" content="d59c48ec4a96c7fc400851a7c1e6d643">
+    <title>CoinReach Rewards</title>
+    
+    <!-- External Libraries (Styling, Icons, Database) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-database-compat.js"></script>
+    
+    <style>
+        /* App ka Mukammal Design */
+        body { background-color: #F8FAFC; font-family: 'Poppins', sans-serif; }
+        .card { background-color: white; border-radius: 1.25rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.07), 0 4px 6px -2px rgba(0, 0, 0, 0.05); transition: transform 0.2s ease-in-out; }
+        .card:hover { transform: translateY(-4px); }
+        .gradient-bg { background-image: linear-gradient(135deg, #8B5CF6, #6D28D9); }
+        .btn-primary { background-image: linear-gradient(to right, #8B5CF6, #A78BFA); color: white; border-radius: 9999px; padding: 0.8rem 1.75rem; font-weight: 600; box-shadow: 0 4px 8px rgba(139, 92, 246, 0.3); transition: all 0.2s; }
+        .btn-disabled { background: #D1D5DB; color: #6B7280; cursor: not-allowed; box-shadow: none; }
+        .footer-action-bar { position: fixed; bottom: 0; left: 0; right: 0; background: white; display: flex; justify-content: space-around; align-items: center; padding: 0.75rem 1rem; border-top: 1px solid #E5E7EB; box-shadow: 0 -4px 10px -1px rgba(0,0,0,0.05); z-index: 50; }
+        #toast { position: fixed; bottom: -100px; left: 50%; transform: translateX(-50%); background-color: #25D366; color: white; padding: 1rem 1.5rem; border-radius: 9999px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); z-index: 1000; transition: bottom 0.5s ease; }
+        #toast.show { bottom: 100px; }
+        #toast.error { background-color: #EF4444; }
+        .balance-toggle-btn { padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; transition: all 0.2s; }
+        .balance-toggle-btn.active { background-color: white; color: #8B5CF6; }
+        .balance-toggle-btn:not(.active) { background-color: transparent; color: rgba(255,255,255,0.7); }
+        #spin-wheel { transition: transform 4s cubic-bezier(0.25, 0.1, 0.25, 1); }
+    </style>
+</head>
+<body class="pb-28">
+
+    <div id="app-container"><div class="flex justify-center items-center h-screen"><p class="text-gray-500">Loading App...</p></div></div>
+    
+    <div id="footer-bar" class="footer-action-bar" style="display: none;">
+        <a href="https://wa.me/989136150132" target="_blank" class="flex items-center justify-center w-14 h-14 rounded-full" style="background-color: #25D366; color: white;"><i class="fab fa-whatsapp fa-2x"></i></a>
+        <a href="#/withdrawal" class="btn-primary">Withdraw Now</a>
+        <a href="mailto:adeelawanmalikall@gmail.com" class="flex items-center justify-center w-14 h-14 rounded-full" style="background-color: #8B5CF6; color: white;"><i class="fa-solid fa-envelope fa-lg"></i></a>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+        const firebaseConfig = {
+  apiKey: "AIzaSyCs8eZ2JtGUtWNYCVpH8PpKuXnt-G-_gnQ",
+  authDomain: "fomospin-c6f69.firebaseapp.com",
+databaseURL: "https://fomospin-c6f69-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "fomospin-c6f69",
+  storageBucket: "fomospin-c6f69.firebasestorage.app",
+  messagingSenderId: "398450948665",
+  appId: "1:398450948665:web:28410a1e2b7e4cf216ebe8",
+  measurementId: "G-70C8PKDS2F"
+};
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const database = firebase.database();
+
+        // --- Global Variables & Elements ---
+        const appContainer = document.getElementById('app-container');
+        const footerBar = document.getElementById('footer-bar');
+        const toast = document.getElementById('toast');
+        let currentUser = null;
+        let userData = null;
+        let appSettings = {};
+
+        // --- Authentication & Data Loading ---
+        auth.onAuthStateChanged(async user => {
+            const currentPath = window.location.hash;
+            if (user) {
+                currentUser = user;
+                const [userSnapshot, settingsSnapshot] = await Promise.all([ database.ref('users/' + currentUser.uid).once('value'), database.ref('settings').once('value') ]);
+                userData = userSnapshot.val() || {};
+                appSettings = settingsSnapshot.val() || { coinToPkrRate: 100, pkrToUsdtRate: 280, referralReward: 25 };
+                if (!userData.balance) { userData.balance = { coins: 0 }; await database.ref('users/' + currentUser.uid + '/balance').set({ coins: 0 }); }
+                footerBar.style.display = 'flex';
+                const route = currentPath.split('/')[0];
+                if(['#/login', '#/signup', ''].includes(route)) { window.location.hash = '/dashboard'; } else { router(); }
+            } else {
+                currentUser = null; userData = null; appSettings = {};
+                footerBar.style.display = 'none';
+                const route = currentPath.split('/')[0];
+                if(route !== '#/login' && route !== '#/signup') { window.location.hash = '/login'; } else { router(); }
+            }
+        });
+
+        // --- Helper Functions ---
+function showToast(message, isError = false) {
+    toast.textContent = message;
+    toast.className = isError ? "show error" : "show";
+    setTimeout(() => {
+        toast.className = toast.className.replace("show", "");
+    }, 3000);
+}
+
+function generateReferralCode() {
+    return Math.random().toString(36).substring(2,8).toUpperCase();
+}
+
+function getBalances(coins) {
+    const pkr = coins / (appSettings.coinToPkrRate || 100);
+    const usdt = pkr / (appSettings.pkrToUsdtRate || 280);
+    return { coins, pkr, usdt };
+}
+
+// GOOGLE LOGIN FUNCTION
+function googleLogin(){
+
+const provider = new firebase.auth.GoogleAuthProvider();
+
+firebase.auth().signInWithRedirect(provider)
+
+.then((result)=>{
+alert("Google Login Successful");
+})
+
+.catch((error)=>{
+alert(error.message);
+});
+
+}
+function initSpinWheel(){
+
+const btn = document.getElementById("spin-btn");
+const wheel = document.getElementById("spin-wheel");
+
+btn.addEventListener("click", function(){
+
+btn.disabled = true;
+
+const rewards = [20,50,0,100,5,0,25,25,10,0,10];
+
+const slice = 360 /  rewards.length;
+
+const randomIndex = Math.floor(Math.random()*rewards.length);
+
+const reward = rewards[randomIndex];
+
+const deg = 3600 + (360 - (randomIndex * slice));
+
+wheel.style.transform = "rotate("+deg+"deg)";
+
+setTimeout(()=>{
+
+database.ref("users/"+currentUser.uid+"/balance/coins")
+.transaction((coins)=>{
+return (coins || 0) + reward;
+});
+
+database.ref("users/"+currentUser.uid+"/lastSpinDate")
+.set(new Date().toISOString().slice(0,10));
+
+showToast("Congratulations! You won "+reward+" coins!");
+
+},4000);
+
+});
+}
+
+      // --- Page Content Generator (A to Z) ---
+        async function getPageContent(path) {
+            const [route, param] = path.substring(1).split('/');
+            if (!currentUser && !['login', 'signup'].includes(route)) { window.location.hash = '/login'; return `<p class="p-8 text-center">Redirecting to login...</p>`; }
+            if (currentUser && ['login', 'signup'].includes(route)) { window.location.hash = '/dashboard'; return `<p class="p-8 text-center">Redirecting to Dashboard...</p>`; }
+            
+            switch(route) {
+                case 'login':
+return `
+<div class="flex flex-col items-center justify-center min-h-screen p-4">
+
+<div class="text-center mb-6">
+<img src="login.png" class="w-40 mx-auto mb-4">
+<h1 class="text-3xl font-bold text-gray-800">HELLO 💰</h1>
+<p class="text-gray-500">Welcome to CoinReach</p>
+</div>
+
+<div class="w-full max-w-sm card p-8">
+
+<form id="login-form" class="space-y-4">
+<input id="login-email" type="email" placeholder="Email" class="w-full p-3 border rounded-lg" required>
+
+<input id="login-password" type="password" placeholder="Password" class="w-full p-3 border rounded-lg" required>
+
+<button type="submit" class="btn-primary w-full !mt-4">Login</button>
+</form>
+
+<button onclick="googleLogin()" class="w-full mt-4 p-3 border rounded-full flex items-center justify-center gap-2">
+<img src="google.png" style="width:52px;height:52px;">
+Login with Google
+</button>
+
+<p class="text-center mt-4 text-xs text-gray-400">
+By continuing, you agree to Privacy Policy
+</p>
+
+<p class="text-center mt-3 text-sm">
+Don't have an account?
+<a href="#/signup" class="text-purple-600 font-semibold">Sign Up</a>
+</p>
+
+</div>
+</div>`;
+
+                case 'signup':
+                    return `
+                         <div class="flex flex-col items-center justify-center min-h-screen p-4">
+                            <h1 class="text-3xl font-bold text-purple-600 mb-6">Create Account</h1>
+                            <div class="w-full max-w-sm card p-8">
+                                <form id="signup-form" class="space-y-4">
+                                    <input id="signup-name" type="text" placeholder="Full Name" class="w-full p-3 border rounded-lg" required>
+                                    <input id="signup-phone" type="tel" placeholder="Phone Number" class="w-full p-3 border rounded-lg" required>
+                                    <input id="signup-email" type="email" placeholder="Email" class="w-full p-3 border rounded-lg" required>
+                                    <input id="signup-password" type="password" placeholder="Password" class="w-full p-3 border rounded-lg" required>
+                                    <input id="signup-referral" type="text" placeholder="Referral Code (Optional)" class="w-full p-3 border rounded-lg" value="${param || ''}">
+                                    <button type="submit" class="btn-primary w-full !mt-6">Sign Up</button>
+                                </form>
+                                <p class="text-center mt-4 text-sm">Already have an account? <a href="#/login" class="text-purple-600 font-semibold">Login</a></p>
+                            </div>
+                        </div>`;
+
+                case 'dashboard':
+                    if (!userData) return `<p class="p-8 text-center">Loading Dashboard...</p>`;
+                    const balances = getBalances(userData.balance.coins);
+                    return `
+                        <div class="p-4 space-y-6">
+                            <div class="flex justify-between items-center">
+                                <div><h1 class="text-xl font-bold text-gray-800">Hi, ${userData.name}</h1><p class="text-sm text-gray-500">Welcome back!</p></div>
+                                <div class="flex items-center space-x-4">
+                                    <a href="#/notices" class="relative p-2"><i class="fa-solid fa-bell fa-lg text-gray-600"></i></a>
+                                    <a href="#/profile" class="relative p-2"><i class="fa-solid fa-user-circle fa-lg text-gray-600"></i></a>
+                                </div>
+                            </div>
+                            <div class="card gradient-bg text-white p-6 text-center">
+                                <p class="text-lg opacity-80">Total Balance</p>
+                                <div id="balance-display" class="my-2">
+                                    <p class="text-4xl font-bold">${balances.coins.toLocaleString()} <span class="text-2xl opacity-80">Coins</span></p>
+                                </div>
+                                <div class="flex justify-center items-center space-x-2 bg-white/20 p-1 rounded-full">
+                                    <button class="balance-toggle-btn active" data-currency="coins">Coins</button>
+                                    <button class="balance-toggle-btn" data-currency="pkr">PKR</button>
+                                    <button class="balance-toggle-btn" data-currency="usdt">USDT</button>
+                                </div>
+                                <div class="mt-4 text-sm flex justify-around opacity-90">
+                                    <span>PKR ${balances.pkr.toFixed(2)}</span>
+                                    <span>USDT ${balances.usdt.toFixed(2)}</span>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-4">
+                                <a href="#/earning" class="card p-4 space-y-2 text-center"><i class="fa-solid fa-tasks fa-2x text-green-500"></i><p class="font-semibold">Earning Tasks</p></a>
+                                <a href="#/spin" class="card p-4 space-y-2 text-center"><i class="fa-solid fa-dharmachakra fa-2x text-purple-500"></i><p class="font-semibold">Spin Wheel</p></a>
+                                <a href="#/referrals" class="card p-4 space-y-2 text-center"><i class="fa-solid fa-users fa-2x text-blue-500"></i><p class="font-semibold">Referrals</p></a>
+                                <a href="#/promotion" class="card p-4 space-y-2 text-center"><i class="fa-solid fa-bullhorn fa-2x text-orange-500"></i><p class="font-semibold">Promotion</p></a>
+                            </div>
+                        </div>`;
+
+                case 'notices':
+                    const [globalSnap, personalSnap] = await Promise.all([ database.ref('notices/global').once('value'), database.ref(`notices/personal/${currentUser.uid}`).once('value') ]);
+                    const globalNotices = globalSnap.val() ? Object.values(globalSnap.val()) : [];
+                    const personalNotices = personalSnap.val() ? Object.values(personalSnap.val()) : [];
+                    const allNotices = [...globalNotices, ...personalNotices].sort((a, b) => b.timestamp - a.timestamp);
+                    let noticesHTML = '<p class="text-gray-500 text-center p-4">No new notices.</p>';
+                    if (allNotices.length > 0) { noticesHTML = allNotices.map(notice => `<div class="card p-4"><div class="flex justify-between items-center mb-1"><h3 class="font-bold text-gray-800">${notice.title}</h3><span class="text-xs text-gray-500">${new Date(notice.timestamp).toLocaleDateString()}</span></div><p class="text-gray-600 text-sm">${notice.message}</p></div>`).join(''); }
+                    return `<div class="p-4"><div class="flex items-center mb-4"><a href="#/dashboard" class="p-2"><i class="fa-solid fa-arrow-left"></i></a><h1 class="text-2xl font-bold ml-2">Notifications</h1></div><div class="space-y-4">${noticesHTML}</div></div>`;
+
+                case 'earning':
+                    const tasksSnapshot = await database.ref('tasks').once('value');
+                    const allTasks = tasksSnapshot.val() ? Object.keys(tasksSnapshot.val()).map(key => ({ id: key, ...tasksSnapshot.val()[key] })) : [];
+                    const userCompletions = userData.taskCompletions || {};
+                    const availableTasks = allTasks.filter(task => { const completedCount = userCompletions[task.id] || 0; const taskLimit = task.limit || 1; return completedCount < taskLimit; });
+                    let tasksHTML = '<p class="text-gray-500 text-center p-4">No new tasks available right now.</p>';
+                    if (availableTasks.length > 0) { tasksHTML = availableTasks.map(task => `<div class="card p-4 flex items-center space-x-4"><img src="${task.image}" class="w-16 h-16 rounded-lg object-cover"><div class="flex-1"><p class="font-bold text-gray-800">${task.title}</p><p class="text-sm text-green-600 font-semibold">Reward: ${task.reward} Coins</p></div><a href="#/verify/${task.id}" class="btn-primary" style="padding: 0.5rem 1rem;">Start</a></div>`).join(''); }
+                    return `<div class="p-4"><div class="flex items-center mb-4"><a href="#/dashboard" class="p-2"><i class="fa-solid fa-arrow-left"></i></a><h1 class="text-2xl font-bold ml-2">Earning Tasks</h1></div><div class="space-y-4">${tasksHTML}</div></div>`;
+
+                case 'verify':
+                    const taskSnapshot = await database.ref(`tasks/${param}`).once('value');
+                    const task = taskSnapshot.val();
+                    if (!task) return `<p class="p-8 text-center">Task not found.</p>`;
+                    let adContentHTML = '';
+                    if (task.youtubeId) {
+                        adContentHTML = `<div class="w-full aspect-video rounded-lg shadow-lg overflow-hidden"><iframe class="w-full h-full" src="https://www.youtube.com/embed/${task.youtubeId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${task.youtubeId}" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe></div>`;
+                    } else if (task.customAdUrl) {
+                        adContentHTML = `<img src="${task.customAdUrl}" class="w-full rounded-lg shadow-lg">`;
+                    } else {
+                        
+                                         
+                    }
+
+                    return `
+                        <div class="p-4 text-center">
+                            <h1 class="text-2xl font-bold mb-2">${task.title}</h1>
+                            <p class="text-gray-600 mb-4">Please wait for the timer to finish.</p>
+                            <div class="my-6">${adContentHTML}</div>
+                            <div class="my-6"><p class="text-5xl font-bold text-purple-600" id="timer">30</p></div>
+                            <button id="claim-btn" class="btn-primary w-full btn-disabled" disabled>Claim Reward</button>
+                        </div>`;
+
+                case 'withdrawal':
+             setTimeout(changeMethod,100);
+                    return`
+                    
+                        <div class="p-4 space-y-4">
+                            <div class="flex items-center mb-2"><a href="#/dashboard" class="p-2"><i class="fa-solid fa-arrow-left"></i></a><h1 class="text-2xl font-bold ml-2">New Withdrawal</h1></div>
+                             <div class="card p-4">
+                                 <form id="withdrawal-form" class="space-y-3">
+                                    <div><label class="text-sm font-medium text-gray-700">Amount (Coins)</label><input type="number" id="w-amount" placeholder="Min 5000" class="w-full mt-1 p-3 border rounded-lg" required></div>
+                                    <div>
+<label class="text-sm font-medium text-gray-700">Method</label>
+<select id="w-method" onchange="changeMethod()" class="w-full mt-1 p-3 border rounded-lg">
+<option>UPI</option>
+<option>Paytm</option>
+<option>Bank Transfer</option>
+<option>EasyPaisa</option>
+<option>JazzCash</option>
+</select>
+</div>
+                                    <div><label class="text-sm font-medium text-gray-700">Account Number</label><input type="text" id="w-number" placeholder="Enter UPI ID or Account Number" class="w-full mt-1 p-3 border rounded-lg" required></div>
+                                    <div><label class="text-sm font-medium text-gray-700">Account Holder Name</label><input type="text" id="w-name" placeholder="Full Name" class="w-full mt-1 p-3 border rounded-lg" required></div>
+                                    <button type="submit" class="btn-primary w-full !mt-5">Submit Request</button>
+                                 </form>
+                             </div>
+                             <a href="#/history" class="text-purple-600 font-semibold text-center block">View Withdrawal History &rarr;</a>
+                         </div>`;
+                
+                case 'history':
+                    const historySnapshot = await database.ref('withdrawals').orderByChild('uid').equalTo(currentUser.uid).once('value');
+                    const history = historySnapshot.val();
+                    let historyHTML = '<p class="text-gray-500 text-center p-4">No withdrawal history found.</p>';
+                    if (history) { historyHTML = Object.values(history).reverse().map(req => `<div class="card p-4"><div class="flex justify-between items-center"><div><p class="font-bold">${req.amount} Coins</p><p class="text-sm text-gray-500">${req.method} - ${req.accountNumber}</p></div><span class="font-semibold px-3 py-1 rounded-full text-xs ${ req.status === 'Pending' ? 'text-yellow-800 bg-yellow-200' : req.status === 'Paid' ? 'text-green-800 bg-green-200' : 'text-red-800 bg-red-200'}">${req.status}</span></div></div>`).join(''); }
+                    return `<div class="p-4 space-y-4"><div class="flex items-center mb-2"><a href="#/withdrawal" class="p-2"><i class="fa-solid fa-arrow-left"></i></a><h1 class="text-2xl font-bold ml-2">Withdrawal History</h1></div>${historyHTML}</div>`;
+                
+                case 'referrals':
+                    const referralReward = appSettings.referralReward || 25;
+                    const referralsSnapshot = await database.ref(`users/${currentUser.uid}/referrals`).once('value');
+                    const referralUIDs = referralsSnapshot.val() ? Object.keys(referralsSnapshot.val()) : [];
+                    let referralListHTML = '<p class="text-gray-500 text-center">You haven\'t referred anyone yet.</p>';
+                    if (referralUIDs.length > 0) { const referralPromises = referralUIDs.map(uid => database.ref(`users/${uid}`).once('value')); const referralSnapshots = await Promise.all(referralPromises); referralListHTML = referralSnapshots.map(snap => snap.val()).filter(Boolean).map(refUserData => `<div class="card p-4 flex justify-between items-center"><p class="font-semibold">${refUserData.name}</p><p class="text-sm text-green-600">Earned: ${(refUserData.balance.coins || 0).toLocaleString()} Coins</p></div>`).join(''); }
+                    const referralLink = `${window.location.origin}${window.location.pathname}#/signup/${userData.referralCode}`;
+                    return `
+                        <div class="p-4 space-y-4">
+                            <div class="flex items-center mb-2"><a href="#/dashboard" class="p-2"><i class="fa-solid fa-arrow-left"></i></a><h1 class="text-2xl font-bold ml-2">My Referrals</h1></div>
+                            <div class="card p-4 text-center bg-blue-50 border border-blue-200"><p class="font-semibold text-blue-800">You will receive <span class="font-bold text-lg">${referralReward} Coins</span> for each successful referral!</p></div>
+                            <div class="card p-4 text-center"><p class="text-gray-600 mb-2">Share your code or link with friends:</p><div class="bg-gray-100 p-3 rounded-lg border-2 border-dashed"><span id="ref-code" class="text-gray-800 text-lg font-bold tracking-widest">${userData.referralCode}</span></div><button id="copy-code-btn" class="btn-primary w-full mt-3"><i class="fa-solid fa-copy"></i> Copy Code</button><button id="copy-link-btn" class="bg-green-500 text-white font-semibold w-full py-3 rounded-full mt-3"><i class="fa-solid fa-link"></i> Copy Referral Link</button><input type="text" value="${referralLink}" id="referral-link-input" class="sr-only"></div>
+                             <div class="card p-4"><h2 class="font-bold text-lg mb-3">Total Referrals: ${referralUIDs.length}</h2><div class="space-y-3">${referralListHTML}</div></div>
+                        </div>`;
+
+                case 'spin':
+const today = new Date().toISOString().slice(0, 10);
+const canSpin = true;
+
+// local wheel image
+const spinWheelImage = 'spin.jpg';
+
+// spin button activate
+setTimeout(initSpinWheel,100);
+
+return `
+<div class="p-4 text-center">
+
+<div class="flex items-center mb-4">
+<a href="#/dashboard" class="p-2">
+<i class="fa-solid fa-arrow-left"></i>
+</a>
+<h1 class="text-2xl font-bold ml-2">Spin Wheel</h1>
+</div>
+
+<p class="text-gray-600 mb-8">
+
+
+${canSpin ? 'You have 1 free spin today!' : 'Come back tomorrow for another spin!'}
+</p>
+
+<div class="relative w-80 h-80 mx-auto mb-8">
+
+<img id="spin-wheel" src="${spinWheelImage}" class="w-full h-full">
+
+<div style="clip-path: polygon(50% 100%, 0 0, 100% 0);"
+class="absolute top-[-15px] left-1/2 -translate-x-1/2 w-8 h-8 bg-red-500">
+</div>
+
+</div>
+
+<button id="spin-btn" 
+class="text-xl px-10 py-4 ${canSpin ? 'btn-primary' : 'btn-disabled'}" 
+${!canSpin ? 'disabled' : ''}>
+SPIN NOW
+</button>
+
+</div>`;
+                case 'promotion':
+                    return `
+                        <div class="p-4 text-center space-y-6">
+                            <a href="#/dashboard" class="absolute top-4 left-4 p-2 text-gray-700"><i class="fa-solid fa-arrow-left fa-lg"></i></a>
+                            <i class="fa-solid fa-bullhorn fa-4x text-orange-500 mt-8"></i><h1 class="text-3xl font-bold">Promote With Us</h1>
+                            <p class="text-gray-600">Promote your ads or YouTube video here. 📢<br>Reach thousands of active users.</p>
+                            <a href="https://wa.me/989136150132?text=I'm_interested_in_promotion" target="_blank" class="btn-primary inline-block"><i class="fab fa-whatsapp"></i> Chat for Details</a>
+                        </div>`;
+
+                case 'profile':
+                    if (!userData) return `<p class="p-8 text-center">Loading Profile...</p>`;
+                    return `
+                        <div class="p-4 space-y-4">
+                            <div class="flex items-center mb-2"><a href="#/dashboard" class="p-2"><i class="fa-solid fa-arrow-left"></i></a><h1 class="text-2xl font-bold ml-2">My Profile</h1></div>
+                            <div class="card p-6"><form id="profile-form" class="space-y-4"><div><label class="font-semibold">Name</label><input id="profile-name" type="text" value="${userData.name}" class="w-full mt-1 p-3 border rounded-lg"></div><div><label class="font-semibold">Phone</label><input id="profile-phone" type="tel" value="${userData.phone}" class="w-full mt-1 p-3 border rounded-lg"></div><button type="submit" class="btn-primary w-full !mt-6">Update Profile</button></form></div>
+                            <button id="logout-btn" class="w-full text-center py-3 bg-red-500 text-white rounded-lg font-semibold">Logout</button>
+                        </div>`;
+
+                default:
+                    return `<div class="p-8 text-center"><h1 class="text-2xl font-bold">Page Not Found</h1><a href="#/dashboard" class="text-purple-600 mt-4 inline-block">Go to Dashboard</a></div>`;
+            }
+        }
+
+        // --- Event Listeners ---
+        function attachEventListeners(path) {
+            const [route, param] = path.substring(1).split('/');
+            if(route === 'login') document.getElementById('login-form')?.addEventListener('submit', handleLogin);
+            if(route === 'signup') document.getElementById('signup-form')?.addEventListener('submit', handleSignup);
+            if(route === 'dashboard') {
+                document.querySelectorAll('.balance-toggle-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        const currency = e.target.dataset.currency;
+                        const balances = getBalances(userData.balance.coins);
+                        const display = document.getElementById('balance-display');
+                        let html = '';
+                        if (currency === 'coins') html = `<p class="text-4xl font-bold">${balances.coins.toLocaleString()} <span class="text-2xl opacity-80">Coins</span></p>`;
+                        else if (currency === 'pkr') html = `<p class="text-4xl font-bold"><span class="text-2xl opacity-80">PKR</span> ${balances.pkr.toFixed(2)}</p>`;
+                        else if (currency === 'usdt') html = `<p class="text-4xl font-bold"><span class="text-2xl opacity-80">USDT</span> ${balances.usdt.toFixed(2)}</p>`;
+                        display.innerHTML = html;
+                        document.querySelectorAll('.balance-toggle-btn').forEach(b => b.classList.remove('active'));
+                        e.target.classList.add('active');
+                    });
+                });
+            }
+            if(route === 'verify') handleVerificationTimer(param);
+            if(route === 'withdrawal') document.getElementById('withdrawal-form')?.addEventListener('submit', handleWithdrawal);
+            if(route === 'profile') {
+                document.getElementById('profile-form')?.addEventListener('submit', handleProfileUpdate);
+                document.getElementById('logout-btn')?.addEventListener('click', () => auth.signOut());
+            }
+            if(route === 'referrals') {
+                document.getElementById('copy-code-btn')?.addEventListener('click', () => { navigator.clipboard.writeText(userData.referralCode); showToast('Referral code copied!'); });
+                document.getElementById('copy-link-btn')?.addEventListener('click', () => { const linkInput = document.getElementById('referral-link-input'); navigator.clipboard.writeText(linkInput.value); showToast('Referral link copied!'); });
+            }
+            if(route === 'spin') document.getElementById('spin-btn')?.addEventListener('click', handleSpin);
+        }
+
+        // --- Handler Functions (A to Z) ---
+        async function handleLogin(e) { e.preventDefault(); const email = document.getElementById('login-email').value, password = document.getElementById('login-password').value; try { await auth.signInWithEmailAndPassword(email, password); showToast('Logged in successfully!'); } catch (error) { showToast(error.message, true); } }
+        async function handleSignup(e) { e.preventDefault(); const name = document.getElementById('signup-name').value, phone = document.getElementById('signup-phone').value, email = document.getElementById('signup-email').value, password = document.getElementById('signup-password').value, referralCode = document.getElementById('signup-referral').value.trim().toUpperCase(); try { const userCredential = await auth.createUserWithEmailAndPassword(email, password); const newUser = userCredential.user; const newReferralCode = generateReferralCode(); await database.ref('users/' + newUser.uid).set({ name, phone, email, referralCode: newReferralCode, balance: { coins: 0 }, createdAt: new Date().toISOString() }); await database.ref('referralCodes').child(newReferralCode).set(newUser.uid); if (referralCode) { const codeSnapshot = await database.ref('referralCodes').child(referralCode).once('value'); if (codeSnapshot.exists()) { const referrerUid = codeSnapshot.val(); await database.ref(`users/${referrerUid}/referrals/${newUser.uid}`).set(true); const reward = appSettings.referralReward || 25; const referrerSnap = await database.ref(`users/${referrerUid}/balance`).once('value'); const referrerBalance = referrerSnap.val()?.coins || 0; await database.ref(`users/${referrerUid}/balance`).update({coins: referrerBalance + reward}); } } showToast('Account created successfully!'); } catch (error) { showToast(error.message, true); } }
+        async function handleProfileUpdate(e) { e.preventDefault(); const newName = document.getElementById('profile-name').value, newPhone = document.getElementById('profile-phone').value; try { await database.ref('users/' + currentUser.uid).update({ name: newName, phone: newPhone }); userData.name = newName; userData.phone = newPhone; showToast('Profile updated!'); } catch(error) { showToast(error.message, true); } }
+        async function handleWithdrawal(e) { e.preventDefault(); const amount = parseInt(document.getElementById('w-amount').value), method = document.getElementById('w-method').value, number = document.getElementById('w-number').value, name = document.getElementById('w-name').value; if (amount < 5000) { showToast('Minimum withdrawal is 5000 coins.', true); return; } if (amount > userData.balance.coins) { showToast("You don't have enough coins.", true); return; } const newBalance = userData.balance.coins - amount; const withdrawalRef = database.ref('withdrawals').push(); await withdrawalRef.set({ uid: currentUser.uid, amount, method, accountNumber: number, accountHolder: name, status: 'Pending', timestamp: Date.now() }); await database.ref(`users/${currentUser.uid}/balance`).update({ coins: newBalance }); userData.balance.coins = newBalance; showToast('Withdrawal request submitted!'); e.target.reset(); window.location.hash = '/history'; }
+        async function handleSpin() { const spinBtn = document.getElementById('spin-btn'); spinBtn.disabled = true; spinBtn.innerHTML = "Spinning..."; const wheel = document.getElementById('spin-wheel'); const rewards = (appSettings.spinRewards?.randomOptions || "5,10,20,50").split(',').map(Number); const randomReward = appSettings.spinRewards?.mode === 'manual' ? (appSettings.spinRewards.manualValue || 10) : rewards[Math.floor(Math.random() * rewards.length)]; const randomRotation = 360 * 5 + Math.floor(Math.random() * 360); wheel.style.transform = `rotate(${randomRotation}deg)`; setTimeout(async () => { showToast(`Congratulations! You won ${randomReward} coins!`); const newBalance = userData.balance.coins + randomReward; const today = new Date().toISOString().slice(0, 10); await database.ref('users/' + currentUser.uid).update({ 'balance/coins': newBalance, 'lastSpinDate': today }); userData.balance.coins = newBalance; userData.lastSpinDate = today; spinBtn.className = 'btn-disabled text-xl px-10 py-4'; spinBtn.innerHTML = "Come Back Tomorrow"; }, 4000); }
+        function handleVerificationTimer(taskId) { let timeLeft = 30; const timerEl = document.getElementById('timer'), claimBtn = document.getElementById('claim-btn'); const timerInterval = setInterval(() => { timeLeft--; if(timerEl) timerEl.textContent = timeLeft; if (timeLeft <= 0) { clearInterval(timerInterval); if(timerEl) timerEl.textContent = "Done!"; if(claimBtn) { claimBtn.disabled = false; claimBtn.classList.remove('btn-disabled'); claimBtn.addEventListener('click', () => claimReward(taskId, claimBtn)); } } }, 1000); }
+        async function claimReward(taskId, button) { button.disabled = true; button.innerHTML = "Claiming..."; const taskSnapshot = await database.ref(`tasks/${taskId}`).once('value'); const task = taskSnapshot.val(); if (!task) { showToast('Task not found!', true); return; } const currentCount = userData.taskCompletions?.[taskId] || 0; const newCount = currentCount + 1; await database.ref(`users/${currentUser.uid}/taskCompletions/${taskId}`).set(newCount); if (!userData.taskCompletions) userData.taskCompletions = {}; userData.taskCompletions[taskId] = newCount; const newBalance = (userData.balance.coins || 0) + task.reward; await database.ref(`users/${currentUser.uid}/balance`).update({ coins: newBalance }); userData.balance.coins = newBalance; showToast(`${task.reward} coins claimed!`); window.location.hash = '/earning'; }
+
+        // --- App Router ---
+        async function router() {
+            let path = window.location.hash.slice(1);
+            if (!path) { path = currentUser ? '/dashboard' : '/login'; }
+            appContainer.innerHTML = await getPageContent(path);
+            attachEventListeners(path);
+        }
+        
+        window.addEventListener('hashchange', router);
+        window.addEventListener('load', router);
+
+function changeMethod(){
+
+const method = document.getElementById("w-method")?.value;
+const field = document.getElementById("w-number");
+
+if(!field) return;
+
+if(method === "UPI"){
+field.placeholder = "Enter UPI ID (example@upi)";
+}
+
+else if(method === "Paytm"){
+field.placeholder = "Enter Paytm Number";
+}
+
+else if(method === "Bank Transfer"){
+field.placeholder = "Enter Bank Account Number";
+}
+
+else if(method === "EasyPaisa"){
+field.placeholder = "Enter EasyPaisa Number";
+}
+
+else if(method === "JazzCash"){
+field.placeholder = "Enter JazzCash Number";
+}
+}
+
+</script>
+
+
+</body>
+</html>

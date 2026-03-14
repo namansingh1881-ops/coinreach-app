@@ -1,0 +1,319 @@
+))<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AdReach Admin Panel</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css">
+    <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.10.0/firebase-database-compat.js"></script>
+    
+    <style>
+        /* User App Style CSS integration */
+        body { background-color: #F8FAFC; font-family: 'Poppins', sans-serif; color: #1e293b; }
+        
+        .card { background-color: white; border-radius: 1.25rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.07), 0 4px 6px -2px rgba(0, 0, 0, 0.05); transition: transform 0.2s ease-in-out; border: 1px solid #f1f5f9; }
+        .card:hover { transform: translateY(-4px); }
+        
+        .gradient-bg { background-image: linear-gradient(135deg, #8B5CF6, #6D28D9); }
+        
+        .btn-primary { background-image: linear-gradient(to right, #8B5CF6, #A78BFA); color: white; border-radius: 9999px; padding: 0.8rem 1.75rem; font-weight: 600; box-shadow: 0 4px 8px rgba(139, 92, 246, 0.3); transition: all 0.2s; border: none; cursor: pointer; display: inline-block; text-align: center; }
+        .btn-primary:hover { transform: scale(1.02); box-shadow: 0 6px 12px rgba(139, 92, 246, 0.4); }
+        
+        .input-style { width: 100%; padding: 0.75rem 1rem; border: 1px solid #e2e8f0; border-radius: 0.75rem; outline: none; transition: border-color 0.2s; }
+        .input-style:focus { border-color: #8B5CF6; ring: 2px; ring-color: #8B5CF6; }
+
+        .modal { visibility: hidden; opacity: 0; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px); transition: opacity 0.3s ease; display: flex; align-items: center; justify-content: center; }
+        .modal.show { visibility: visible; opacity: 1; }
+        .modal-content { background-color: #ffffff; padding: 2rem; width: 95%; max-width: 500px; border-radius: 1.5rem; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); transform: scale(0.95); transition: transform 0.3s ease; }
+        .modal.show .modal-content { transform: scale(1); }
+
+        .section-view { display: none; }
+        .section-view.active { display: block; animation: fadeIn 0.5s; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Custom Table Styling */
+        table { width: 100%; border-collapse: separate; border-spacing: 0 8px; }
+        th { padding: 12px 16px; color: #64748b; font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+        tr.border-b { background-color: white; transition: background 0.2s; }
+        tr.border-b td { padding: 16px; first-child { border-top-left-radius: 1rem; border-bottom-left-radius: 1rem; } last-child { border-top-right-radius: 1rem; border-bottom-right-radius: 1rem; } }
+        tr.border-b:hover { background-color: #f8fafc; }
+    </style>
+</head>
+<body class="min-h-screen">
+
+    <div id="app-container">
+        <!-- Login Screen -->
+        <div id="login-screen">
+            <div class="flex flex-col items-center justify-center min-h-screen p-4">
+                <div class="text-center mb-8">
+                    <div class="w-20 h-20 gradient-bg rounded-2xl flex items-center justify-center mx-auto shadow-lg">
+                        <i class="fa-solid fa-shield-halved fa-3x text-white"></i>
+                    </div>
+                    <h1 class="text-4xl font-bold text-gray-800 mt-4">AdReach</h1>
+                    <p class="text-gray-500 font-medium">Control Center</p>
+                </div>
+                <div class="w-full max-w-sm card p-8">
+                    <h2 class="text-2xl font-bold text-center mb-6 text-gray-700">Admin Login</h2>
+                    <form id="login-form" class="space-y-4">
+                        <input id="login-username" type="text" placeholder="Username" class="input-style" required value="Admin666">
+                        <input id="login-password" type="password" placeholder="Password" class="input-style" required value="hack99">
+                        <button type="submit" class="btn-primary w-full !mt-6">Login to Dashboard</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Admin Panel -->
+        <div id="admin-panel" class="hidden">
+            <header class="gradient-bg text-white p-5 shadow-lg flex justify-between items-center sticky top-0 z-20">
+                <div class="flex items-center space-x-3">
+                    <div class="bg-white/20 p-2 rounded-lg">
+                        <i class="fa-solid fa-gauge-high"></i>
+                    </div>
+                    <h1 id="header-title" class="text-xl font-bold tracking-tight">Admin Dashboard</h1>
+                </div>
+                <button id="logout-btn" class="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-full text-sm font-bold transition-all">
+                    Logout <i class="fa-solid fa-right-from-bracket ml-1"></i>
+                </button>
+            </header>
+            <main id="main-content" class="p-4 max-w-6xl mx-auto"></main>
+        </div>
+    </div>
+    
+    <div id="modal-container"></div>
+
+    <script type="module">
+        const firebaseConfig = {
+  apiKey: "AIzaSyCs8eZ2JtGUtWNYCVpH8PpKuXnt-G-_gnQ",
+  authDomain: "fomospin-c6f69.firebaseapp.com",
+databaseURL: "https://fomospin-c6f69-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "fomospin-c6f69",
+  storageBucket: "fomospin-c6f69.firebasestorage.app",
+  messagingSenderId: "398450948665",
+  appId: "1:398450948665:web:28410a1e2b7e4cf216ebe8",
+  measurementId: "G-70C8PKDS2F"
+};
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // --- Global Elements & State ---
+        const loginScreen = document.getElementById('login-screen'), adminPanel = document.getElementById('admin-panel'), mainContent = document.getElementById('main-content'), modalContainer = document.getElementById('modal-container'), headerTitle = document.getElementById('header-title');
+
+        // --- Authentication ---
+        function checkAuth() { if (sessionStorage.getItem('isAdminLoggedIn') === 'true') { loginScreen.style.display = 'none'; adminPanel.style.display = 'block'; renderView('dashboard'); } else { loginScreen.style.display = 'block'; adminPanel.style.display = 'none'; } }
+        document.getElementById('login-form').addEventListener('submit', (e) => { e.preventDefault(); const username = document.getElementById('login-username').value, password = document.getElementById('login-password').value; if (username === 'Admin666' && password === 'hack99') { sessionStorage.setItem('isAdminLoggedIn', 'true'); checkAuth(); } else { alert('Invalid Credentials!'); } });
+        document.getElementById('logout-btn').addEventListener('click', () => { sessionStorage.removeItem('isAdminLoggedIn'); checkAuth(); });
+
+        // --- Modal Logic ---
+        function openModal(content) { modalContainer.innerHTML = `<div id="active-modal" class="modal">${content}</div>`; setTimeout(() => document.getElementById('active-modal')?.classList.add('show'), 10); }
+        function closeModal() { const modal = document.getElementById('active-modal'); if (modal) { modal.classList.remove('show'); setTimeout(() => { modalContainer.innerHTML = ''; }, 300); } }
+        window.addEventListener('click', (e) => { if (e.target.id === 'active-modal') closeModal(); });
+
+        // --- View Renderer ---
+        async function renderView(view, param = null) {
+            headerTitle.innerText = `${view.charAt(0).toUpperCase() + view.slice(1)}`;
+            mainContent.innerHTML = `<div class="flex flex-col items-center justify-center p-20 text-purple-600"><i class="fas fa-circle-notch fa-spin fa-3x mb-4"></i><p class="font-bold">Loading Data...</p></div>`;
+            let content = '';
+            
+            if (view === 'dashboard') {
+                const [usersSnap, tasksSnap, withdrawalsSnap] = await Promise.all([ database.ref('users').once('value'), database.ref('tasks').once('value'), database.ref('withdrawals').orderByChild('status').equalTo('Pending').once('value') ]);
+                content = `
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="card p-6 flex items-center space-x-5">
+                            <div class="w-14 h-14 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-600"><i class="fa-solid fa-users fa-2x"></i></div>
+                            <div><p class="text-sm font-semibold text-gray-500 uppercase">Total Users</p><p class="text-3xl font-bold">${usersSnap.numChildren()}</p></div>
+                        </div>
+                        <div class="card p-6 flex items-center space-x-5">
+                            <div class="w-14 h-14 bg-green-100 rounded-2xl flex items-center justify-center text-green-600"><i class="fa-solid fa-tasks fa-2x"></i></div>
+                            <div><p class="text-sm font-semibold text-gray-500 uppercase">Active Tasks</p><p class="text-3xl font-bold">${tasksSnap.numChildren()}</p></div>
+                        </div>
+                        <div class="card p-6 flex items-center space-x-5 border-l-4 border-yellow-400">
+                            <div class="w-14 h-14 bg-yellow-100 rounded-2xl flex items-center justify-center text-yellow-600"><i class="fa-solid fa-clock fa-2x"></i></div>
+                            <div><p class="text-sm font-semibold text-gray-500 uppercase">Pending Cash</p><p class="text-3xl font-bold">${withdrawalsSnap.numChildren()}</p></div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 lg:grid-cols-4 gap-6">
+                        <a href="#" data-view="users" class="view-btn card p-6 text-center hover:bg-blue-50">
+                            <i class="fa-solid fa-user-gear fa-2x text-blue-500 mb-3"></i>
+                            <h3 class="font-bold">Users</h3>
+                        </a>
+                        <a href="#" data-view="tasks" class="view-btn card p-6 text-center hover:bg-green-50">
+                            <i class="fa-solid fa-list-check fa-2x text-green-500 mb-3"></i>
+                            <h3 class="font-bold">Tasks</h3>
+                        </a>
+                        <a href="#" data-view="withdrawals" class="view-btn card p-6 text-center hover:bg-yellow-50">
+                            <i class="fa-solid fa-wallet fa-2x text-yellow-500 mb-3"></i>
+                            <h3 class="font-bold">Requests</h3>
+                        </a>
+                        <a href="#" data-view="settings" class="view-btn card p-6 text-center hover:bg-purple-50">
+                            <i class="fa-solid fa-sliders fa-2x text-purple-500 mb-3"></i>
+                            <h3 class="font-bold">Settings</h3>
+                        </a>
+                    </div>
+                `;
+            } else if (view === 'users') {
+                const users = (await database.ref('users').once('value')).val();
+                let usersHTML = '<tr><td colspan="5" class="text-center p-8 text-gray-400">No users found.</td></tr>';
+                if (users) { usersHTML = Object.entries(users).map(([uid, user]) => `
+                    <tr class="border-b shadow-sm">
+                        <td class="font-bold text-gray-700">${user.name}</td>
+                        <td class="text-purple-600 font-bold">${(user.balance?.coins || 0).toLocaleString()} <span class="text-xs">Pts</span></td>
+                        <td><span class="px-3 py-1 rounded-full text-xs font-bold ${user.isBlocked ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}">${user.isBlocked ? 'Blocked' : 'Active'}</span></td>
+                        <td class="flex space-x-2">
+                            <button class="user-action w-9 h-9 rounded-lg bg-blue-50 text-blue-500 hover:bg-blue-500 hover:text-white transition-colors" data-action="notice" data-uid="${uid}"><i class="fa-solid fa-envelope"></i></button>
+                            <button class="user-action w-9 h-9 rounded-lg bg-emerald-50 text-emerald-500 hover:bg-emerald-500 hover:text-white transition-colors" data-action="adjust" data-uid="${uid}"><i class="fa-solid fa-coins"></i></button>
+                            <button class="user-action w-9 h-9 rounded-lg bg-orange-50 text-orange-500 hover:bg-orange-500 hover:text-white transition-colors" data-action="block" data-uid="${uid}"><i class="fa-solid fa-ban"></i></button>
+                            <button class="user-action w-9 h-9 rounded-lg bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-colors" data-action="delete" data-uid="${uid}"><i class="fa-solid fa-trash"></i></button>
+                        </td>
+                    </tr>`).join(''); }
+                content = `
+                    <div class="mb-4 flex items-center">
+                        <button class="view-btn bg-white p-2 px-4 rounded-full shadow-sm font-bold text-gray-600 hover:text-purple-600" data-view="dashboard"><i class="fa-solid fa-arrow-left mr-2"></i> Dashboard</button>
+                    </div>
+                    <div class="overflow-x-auto"><table class="w-full"><thead><tr><th class="text-left">User Name</th><th class="text-left">Balance</th><th class="text-left">Status</th><th class="text-left">Actions</th></tr></thead><tbody>${usersHTML}</tbody></table></div>`;
+            } else if (view === 'tasks') {
+                const tasks = (await database.ref('tasks').once('value')).val();
+                let tasksHTML = '<tr><td colspan="5" class="text-center p-8 text-gray-400">No tasks found.</td></tr>';
+                if (tasks) { tasksHTML = Object.entries(tasks).map(([tid, task]) => `
+                    <tr class="border-b shadow-sm">
+                        <td><img src="${task.image}" class="w-12 h-12 object-cover rounded-xl shadow-sm"></td>
+                        <td class="font-bold">${task.title}</td>
+                        <td class="text-green-600 font-bold">${task.reward} <span class="text-xs">Coins</span></td>
+                        <td class="text-gray-500">Limit: ${task.limit || 1}</td>
+                        <td class="flex space-x-2">
+                            <button class="task-action w-10 h-10 rounded-lg bg-blue-50 text-blue-500 hover:bg-blue-600 hover:text-white transition-all" data-action="edit" data-tid="${tid}"><i class="fa-solid fa-pen-to-square"></i></button>
+                            <button class="task-action w-10 h-10 rounded-lg bg-red-50 text-red-500 hover:bg-red-600 hover:text-white transition-all" data-action="delete" data-tid="${tid}"><i class="fa-solid fa-trash"></i></button>
+                        </td>
+                    </tr>`).join(''); }
+                content = `
+                    <div class="mb-6 flex justify-between items-center">
+                        <button class="view-btn bg-white p-2 px-4 rounded-full shadow-sm font-bold text-gray-600 hover:text-purple-600" data-view="dashboard"><i class="fa-solid fa-arrow-left mr-2"></i> Back</button>
+                        <button id="add-task-btn" class="btn-primary text-sm shadow-md">+ Create New Task</button>
+                    </div>
+                    <div class="overflow-x-auto"><table class="w-full"><thead><tr><th>Img</th><th>Title</th><th>Reward</th><th>Cap</th><th>Control</th></tr></thead><tbody>${tasksHTML}</tbody></table></div>`;
+            } else if (view === 'withdrawals') {
+                const withdrawals = (await database.ref('withdrawals').once('value')).val();
+                let wHTML = '<tr><td colspan="6" class="text-center p-8 text-gray-400">No requests found.</td></tr>';
+                if (withdrawals) { 
+                    const userPromises = Object.values(withdrawals).map(w => database.ref(`users/${w.uid}/name`).once('value')); 
+                    const userNames = await Promise.all(userPromises); 
+                    const withdrawalsWithNames = Object.entries(withdrawals).map(([wid, w], index) => ({...w, wid, userName: userNames[index].val() })); 
+                    wHTML = withdrawalsWithNames.reverse().map(w => `
+                        <tr class="border-b">
+                            <td class="font-bold">${w.userName||'User'}</td>
+                            <td class="font-bold text-purple-700">${w.amount} <span class="text-xs">Coins</span></td>
+                            <td><span class="bg-gray-100 px-3 py-1 rounded-lg text-sm font-medium">${w.method}</span></td>
+                            <td class="text-sm font-mono">${w.accountNumber}</td>
+                            <td><span class="px-3 py-1 rounded-full text-[10px] font-black uppercase ${ w.status==='Pending'?'text-yellow-700 bg-yellow-100':w.status==='Paid'?'text-green-700 bg-green-100':'text-red-700 bg-red-100'}">${w.status}</span></td>
+                            <td class="space-x-1">
+                                ${w.status==='Pending'?`<button class="withdrawal-action bg-green-500 text-white text-[10px] px-3 py-1 rounded-full font-bold shadow-sm" data-action="approve" data-wid="${w.wid}">PAID</button><button class="withdrawal-action bg-red-500 text-white text-[10px] px-3 py-1 rounded-full font-bold shadow-sm" data-action="reject" data-wid="${w.wid}">REJECT</button>`:'<span class="text-gray-300">-</span>'}
+                            </td>
+                        </tr>`).join(''); 
+                }
+                content = `<div class="mb-4"><button class="view-btn bg-white p-2 px-4 rounded-full shadow-sm font-bold text-gray-600" data-view="dashboard"><i class="fa-solid fa-arrow-left mr-2"></i> Dashboard</button></div><div class="overflow-x-auto"><table class="w-full"><thead><tr><th>User</th><th>Amount</th><th>Method</th><th>Account</th><th>Status</th><th>Actions</th></tr></thead><tbody>${wHTML}</tbody></table></div>`;
+            } else if (view === 'settings') {
+                const settings = (await database.ref('settings').once('value')).val() || {};
+                content = `
+                    <div class="mb-6"><button class="view-btn bg-white p-2 px-4 rounded-full shadow-sm font-bold text-gray-600" data-view="dashboard"><i class="fa-solid fa-arrow-left mr-2"></i> Dashboard</button></div>
+                    <div class="space-y-6 max-w-2xl mx-auto">
+                        <div class="card p-6">
+                            <h3 class="font-black text-lg mb-4 text-purple-700 border-b pb-2"><i class="fa-solid fa-money-bill-wave mr-2"></i>Currency Exchange</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div><label class="text-xs font-bold text-gray-500">Coins per 1 PKR</label><input id="setting-coin-pkr" type="number" class="input-style mt-1" value="${settings.coinToPkrRate || '100'}"></div>
+                                <div><label class="text-xs font-bold text-gray-500">PKR per 1 USDT</label><input id="setting-pkr-usdt" type="number" class="input-style mt-1" value="${settings.pkrToUsdtRate || '280'}"></div>
+                                <div class="md:col-span-2"><label class="text-xs font-bold text-gray-500">Referral Reward (Coins)</label><input id="setting-ref-reward" type="number" class="input-style mt-1" value="${settings.referralReward || '25'}"></div>
+                            </div>
+                        </div>
+
+                        <div class="card p-6">
+                            <h3 class="font-black text-lg mb-4 text-indigo-700 border-b pb-2"><i class="fa-solid fa-dharmachakra mr-2"></i>Spin Wheel Control</h3>
+                            <div class="space-y-4">
+                                <div><label class="text-xs font-bold text-gray-500">Wheel Image URL</label><input id="setting-spin-image" type="url" class="input-style mt-1" value="${settings.spinRewards?.imageUrl || ''}"></div>
+                                <div><label class="text-xs font-bold text-gray-500">Spin Mode</label><select id="setting-spin-mode" class="input-style mt-1"><option value="random" ${settings.spinRewards?.mode === 'random' ? 'selected' : ''}>Random Options</option><option value="manual" ${settings.spinRewards?.mode === 'manual' ? 'selected' : ''}>Fixed Manual Value</option></select></div>
+                                <div id="spin-manual-div"><label class="text-xs font-bold text-gray-500">Manual Reward Value</label><input id="setting-spin-manual" type="number" class="input-style mt-1" value="${settings.spinRewards?.manualValue || '10'}"></div>
+                                <div id="spin-random-div"><label class="text-xs font-bold text-gray-500">Random Rewards (e.g. 5,10,20,50)</label><input id="setting-spin-random" type="text" class="input-style mt-1" value="${settings.spinRewards?.randomOptions || '5,10,20,50'}"></div>
+                            </div>
+                        </div>
+
+                        <div class="card p-6">
+                            <h3 class="font-black text-lg mb-4 text-blue-700 border-b pb-2"><i class="fa-solid fa-bullhorn mr-2"></i>Push Notice</h3>
+                            <form id="global-notice-form" class="space-y-4">
+                                <input id="notice-title" type="text" placeholder="Subject" class="input-style" required>
+                                <textarea id="notice-message" placeholder="Type your message here..." class="input-style h-24" required></textarea>
+                                <button type="submit" class="bg-blue-600 text-white font-bold py-2 px-6 rounded-xl hover:bg-blue-700 transition-all">Broadcast Notice</button>
+                            </form>
+                        </div>
+
+                        <div class="card p-6 border-2 border-red-100">
+                            <h3 class="font-black text-lg mb-2 text-red-600"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Danger Zone</h3>
+                            <p class="text-xs text-gray-500 mb-4">This will wipe all users, tasks, and history.</p>
+                            <button id="reset-app-btn" class="w-full py-3 bg-red-50 text-red-600 border border-red-200 rounded-xl font-bold hover:bg-red-600 hover:text-white transition-all">FULL FACTORY RESET</button>
+                        </div>
+
+                        <button id="save-settings-btn" class="btn-primary w-full py-4 text-lg shadow-xl">SAVE ALL APP SETTINGS</button>
+                    </div>`;
+                setTimeout(() => {
+                    const mode = document.getElementById('setting-spin-mode').value;
+                    document.getElementById('spin-manual-div').style.display = mode === 'manual' ? 'block' : 'none';
+                    document.getElementById('spin-random-div').style.display = mode === 'random' ? 'block' : 'none';
+                }, 100);
+            }
+            mainContent.innerHTML = content;
+        }
+        
+        // --- Event Delegation ---
+        document.addEventListener('click', async (e) => {
+            if (e.target.closest('.view-btn')) { e.preventDefault(); renderView(e.target.closest('.view-btn').dataset.view); }
+            if (e.target.id === 'save-settings-btn') { e.preventDefault(); const settingsData = { coinToPkrRate: document.getElementById('setting-coin-pkr').value, pkrToUsdtRate: document.getElementById('setting-pkr-usdt').value, referralReward: document.getElementById('setting-ref-reward').value, spinRewards: { mode: document.getElementById('setting-spin-mode').value, manualValue: document.getElementById('setting-spin-manual').value, randomOptions: document.getElementById('setting-spin-random').value, imageUrl: document.getElementById('setting-spin-image').value } }; await database.ref('settings').set(settingsData); alert('Settings saved successfully!'); }
+            if (e.target.id === 'reset-app-btn') { const confirmation = prompt("Type 'RESET' to delete everything."); if (confirmation === 'RESET') { await database.ref().set(null); alert('App Cleaned.'); router(); } }
+        });
+        
+        // User & Task Handlers
+        document.addEventListener('click', async e => { 
+            const userAction = e.target.closest('.user-action'); 
+            if (userAction) {
+                const action = userAction.dataset.action, uid = userAction.dataset.uid;
+                if (action === 'delete') { if (confirm('Delete this user?')) { await database.ref(`users/${uid}`).remove(); renderView('users'); } }
+                else if (action === 'block') { const snap = await database.ref(`users/${uid}/isBlocked`).once('value'); await database.ref(`users/${uid}`).update({ isBlocked: !snap.val() }); renderView('users'); }
+                else if (action === 'adjust') {
+                    openModal(`<div class="modal-content"><h2 class="text-2xl font-black mb-4">Update Coins</h2><form id="adjust-balance-form" class="space-y-4"><input id="new-balance" type="number" placeholder="Enter coin amount" class="input-style" required><div class="flex space-x-2"><button type="submit" class="btn-primary flex-1">Update</button><button type="button" onclick="document.dispatchEvent(new CustomEvent('closemodal'))" class="bg-gray-100 text-gray-600 px-6 rounded-full font-bold">Cancel</button></div></form></div>`);
+                    document.getElementById('adjust-balance-form').onsubmit = async (event) => { event.preventDefault(); const val = document.getElementById('new-balance').value; await database.ref(`users/${uid}/balance`).update({ coins: parseInt(val) }); closeModal(); renderView('users'); };
+                } else if (action === 'notice') {
+                    openModal(`<div class="modal-content"><h2 class="text-2xl font-black mb-4">Direct Message</h2><form id="personal-notice-form" class="space-y-4"><input id="notice-title-p" type="text" placeholder="Title" class="input-style" required><textarea id="notice-message-p" placeholder="Message..." class="input-style h-20" required></textarea><div class="flex space-x-2"><button type="submit" class="btn-primary flex-1">Send Now</button><button type="button" onclick="document.dispatchEvent(new CustomEvent('closemodal'))" class="bg-gray-100 text-gray-600 px-6 rounded-full font-bold">Cancel</button></div></form></div>`);
+                    document.getElementById('personal-notice-form').onsubmit = async (event) => { event.preventDefault(); const notice = { title: document.getElementById('notice-title-p').value, message: document.getElementById('notice-message-p').value, timestamp: Date.now() }; await database.ref(`notices/personal/${uid}`).push(notice); closeModal(); alert('Notice Sent!'); };
+                }
+            }
+
+            const taskAction = e.target.closest('.task-action');
+            if (e.target.id === 'add-task-btn' || taskAction) {
+                const tid = taskAction?.dataset.tid;
+                const action = e.target.id === 'add-task-btn' ? 'add' : taskAction.dataset.action;
+                if(action === 'delete') { if (confirm('Delete task?')) { await database.ref(`tasks/${tid}`).remove(); renderView('tasks'); } return; }
+                const task = tid ? (await database.ref(`tasks/${tid}`).once('value')).val() : {};
+                openModal(`<div class="modal-content"><h2 class="text-2xl font-black mb-4 text-purple-700">${tid ? 'Edit' : 'New'} Task</h2><form id="task-form" class="space-y-4"><input type="hidden" id="task-id" value="${tid || ''}"><input id="task-title" type="text" placeholder="Task Name" class="input-style" required value="${task.title || ''}"><input id="task-reward" type="number" placeholder="Reward Coins" class="input-style" required value="${task.reward || ''}"><input id="task-limit" type="number" placeholder="Daily Limit" class="input-style" required value="${task.limit || '1'}"><input id="task-image" type="url" placeholder="Icon URL" class="input-style" required value="${task.image || ''}"><input id="task-destination" type="url" placeholder="Link" class="input-style" required value="${task.destination || ''}"><div class="flex space-x-2 pt-2"><button type="submit" class="btn-primary flex-1">Save Task</button><button type="button" onclick="document.dispatchEvent(new CustomEvent('closemodal'))" class="bg-gray-200 text-gray-700 px-6 rounded-full font-bold">Close</button></div></form></div>`);
+                document.getElementById('task-form').onsubmit = async (ev) => { ev.preventDefault(); const taskId = document.getElementById('task-id').value; const taskData = { title: document.getElementById('task-title').value, reward: parseInt(document.getElementById('task-reward').value), limit: parseInt(document.getElementById('task-limit').value), image: document.getElementById('task-image').value, destination: document.getElementById('task-destination').value }; const ref = taskId ? database.ref(`tasks/${taskId}`) : database.ref('tasks').push(); await ref.set(taskData); closeModal(); renderView('tasks'); };
+            }
+
+            const wAction = e.target.closest('.withdrawal-action');
+            if(wAction) {
+                const action = wAction.dataset.action, wid = wAction.dataset.wid;
+                const newStatus = action === 'approve' ? 'Paid' : 'Rejected';
+                if (confirm(`Set status to ${newStatus}?`)) { await database.ref(`withdrawals/${wid}`).update({ status: newStatus }); renderView('withdrawals'); }
+            }
+        });
+
+        document.addEventListener('closemodal', closeModal);
+        document.addEventListener('submit', async (e) => { if (e.target.id === 'global-notice-form') { e.preventDefault(); const notice = { title: document.getElementById('notice-title').value, message: document.getElementById('notice-message').value, timestamp: Date.now() }; await database.ref('notices/global').push(notice); alert('Broadcast success!'); e.target.reset(); } });
+        document.addEventListener('change', (e) => { if (e.target.id === 'setting-spin-mode') { const mode = e.target.value; document.getElementById('spin-manual-div').style.display = mode === 'manual' ? 'block' : 'none'; document.getElementById('spin-random-div').style.display = mode === 'random' ? 'block' : 'none'; } });
+
+        // --- Router ---
+        function router() { renderView(window.location.hash.slice(1) || 'dashboard'); }
+        window.addEventListener('hashchange', router);
+        checkAuth();
+    </script>
+</body>
+</html>
